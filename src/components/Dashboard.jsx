@@ -41,7 +41,7 @@ export function Dashboard() {
   const handleVote = async (campaignId, voteType) => {
     setLoading(true);
     try {
-      // First ensure wallet is connected
+      // Make sure wallet is connected
       if (!window.ethereum) {
         throw new Error('Please install MetaMask!');
       }
