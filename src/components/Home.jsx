@@ -78,7 +78,7 @@ export function Home() {
             <p>Create a new campaign or vote on existing ones</p>
           </div>
           <div className="step-card">
-            <div className="step-number">3</div>
+            <div className="st-number">3</div>
             <h3>Track Results</h3>
             <p>Monitor voting results in real-time</p>
           </div>
