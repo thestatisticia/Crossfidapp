@@ -3,40 +3,47 @@ import { ethers } from 'ethers';
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '../config/constants';
 
 export function Dashboard() {
-  const [campaigns, setCampaigns] = useState([
-    {
-      id: 1,
-      title: "Community Development Fund",
-      description: "Proposal to allocate funds for local development projects and infrastructure improvements in the CrossFi ecosystem.",
-      votesFor: 156,
-      votesAgainst: 45,
-      creator: "0x1234...5678",
-      endTime: Date.now() + 86400000,
-      active: true
-    },
-    {
-      id: 2,
-      title: "Protocol Upgrade Proposal",
-      description: "Implementation of new security features and performance improvements for the CrossFi network.",
-      votesFor: 230,
-      votesAgainst: 12,
-      creator: "0x8765...4321",
-      endTime: Date.now() + 172800000,
-      active: true
-    },
-    {
-      id: 3,
-      title: "CrossFi Governance Update",
-      description: "Proposal to enhance the governance mechanism and voting parameters for better community participation.",
-      votesFor: 189,
-      votesAgainst: 23,
-      creator: "0x9876...5432",
-      endTime: Date.now() - 86400000,
-      active: false
-    }
-  ]);
-
+  const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  const fetchCampaigns = async () => {
+    try {
+      if (!window.ethereum) {
+        throw new Error('Please install MetaMask!');
+      }
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+
+      const totalCampaigns = await contract.campaignCount();
+      
+      const fetchedCampaigns = [];
+      for (let i = 1; i <= totalCampaigns; i++) {
+        const campaign = await contract.campaigns(i);
+        const votingData = await contract.getVotingStatus(i);
+        
+        fetchedCampaigns.push({
+          id: i,
+          title: campaign.title,
+          description: campaign.description,
+          creator: campaign.creator,
+          endTime: Number(campaign.endTime) * 1000,
+          active: Date.now() < Number(campaign.endTime) * 1000,
+          votesFor: Number(votingData.votesFor),
+          votesAgainst: Number(votingData.votesAgainst)
+        });
+      }
+
+      setCampaigns(fetchedCampaigns);
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      alert('Failed to load campaigns. Please check your connection and try again.');
+    }
+  };
+
+  useEffect(() => {
+    fetchCampaigns();
+  }, []);
 
   const handleVote = async (campaignId, voteType) => {
     setLoading(true);
