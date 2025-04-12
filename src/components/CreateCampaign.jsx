@@ -1,98 +1,109 @@
-import { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ethers } from 'ethers';
-import { useNavigate } from 'react-router-dom';
-import { CONTRACT_ADDRESS, CONTRACT_ABI, CROSSFI_CHAIN_ID } from '../config/constants';
-import { validateCampaign } from '../utils/validation';
-import { estimateGas } from '../utils/web3';
-import { useCampaignContext } from '../context/CampaignContext';
-import { getErrorMessage } from '../utils/errors';
+import { CONTRACT_ABI } from '../abi';
+
+const CONTRACT_ADDRESS = '0x5aE925E76f63906e725d2f87a8468ACFb93590dE';
+const CROSSFI_CHAIN_ID = '0x103D';
 
 export function CreateCampaign() {
-  const navigate = useNavigate();
-  const { addCampaign } = useCampaignContext();
-  const [formData, setFormData] = useState(() => {
-    const saved = localStorage.getItem('campaignDraft');
-    return saved ? JSON.parse(saved) : {
-      title: '',
-      description: '',
-      duration: 1
-    };
-  });
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
-
-  // Save draft to localStorage when form changes
-  useEffect(() => {
-    localStorage.setItem('campaignDraft', JSON.stringify(formData));
-  }, [formData]);
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    duration: 1
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Validate inputs
-    const validationErrors = validateCampaign(formData);
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      return;
-    }
-
     setLoading(true);
+
     try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: CROSSFI_CHAIN_ID }],
-      });
+      if (!window.ethereum) {
+        throw new Error('Please install MetaMask!');
+      }
+
+      // Switch to CrossFi network
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: CROSSFI_CHAIN_ID }],
+        });
+      } catch (switchError) {
+        console.error('Network switch error:', switchError);
+        throw new Error('Please switch to the CrossFi network');
+      }
+
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (!accounts || accounts.length === 0) {
+        throw new Error('Please connect your wallet first!');
+      }
 
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
+      
       const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
-      // Convert duration from days to seconds
-      const durationInSeconds = formData.title * 24 * 60 * 60;
+      // Convert duration to seconds (as a regular number)
+      const durationInSeconds = Number(formData.duration) * 24 * 60 * 60;
 
-      // Estimate gas dynamically
-      const gasLimit = await estimateGas(contract, 'createCampaign', [
-        formData.title,
-        formData.description,
-        durationInSeconds
-      ]);
+      // Add these checks before creating the campaign
+      if (formData.title.trim() === '') {
+        throw new Error('Campaign title cannot be empty');
+      }
+      if (formData.description.trim() === '') {
+        throw new Error('Campaign description cannot be empty');
+      }
+      if (formData.duration < 1 || formData.duration > 30) {
+        throw new Error('Duration must be between 1 and 30 days');
+      }
 
+      console.log('Creating campaign with params:', {
+        title: formData.title,
+        description: formData.description,
+        duration: durationInSeconds.toString(),
+        contractAddress: CONTRACT_ADDRESS,
+        userAddress: accounts[0]
+      });
+
+      // Add this after switching network
+      const network = await provider.getNetwork();
+      if (network.chainId.toString(16) !== CROSSFI_CHAIN_ID.toLowerCase().replace('0x', '')) {
+        throw new Error('Please make sure you are connected to the CrossFi network');
+      }
+
+      // Create campaign with fixed gas limit
       const tx = await contract.createCampaign(
         formData.title,
         formData.description,
         durationInSeconds,
         {
-          gasLimit: Math.ceil(gasLimit * 1.1) // Add 10% buffer
+          from: accounts[0],
+          gasLimit: 500000, // Fixed gas limit
         }
       );
 
-      // Show transaction progress
-      alert('Transaction submitted');
-
+      console.log('Transaction sent:', tx.hash);
+      
       const receipt = await tx.wait();
-      
+      console.log('Transaction confirmed:', receipt);
+
       alert('Campaign created successfully!');
-
-      // Clear form and localStorage
-      localStorage.removeItem('campaignDraft');
       setFormData({ title: '', description: '', duration: 1 });
-      
-      // Add to global state
-      addCampaign({
-        title: formData.title,
-        description: formData.description,
-        duration: durationInSeconds,
-        transactionHash: receipt.hash
-      });
-
-      // Redirect to dashboard
-      navigate('/dashboard');
-
     } catch (error) {
       console.error('Detailed error:', error);
       
-      const errorMessage = getErrorMessage(error);
-      alert('Operation Failed: ' + errorMessage);
+      let errorMessage = 'Failed to create campaign. ';
+      if (error.message.includes('user rejected')) {
+        errorMessage += 'Transaction was rejected by user.';
+      } else if (error.message.includes('insufficient funds')) {
+        errorMessage += 'Insufficient funds for gas.';
+      } else if (error.message.includes('missing revert data')) {
+        errorMessage += 'Contract execution failed. Please check your inputs and try again.';
+      } else {
+        errorMessage += error.message;
+      }
+      
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -109,35 +120,26 @@ export function CreateCampaign() {
               type="text"
               id="title"
               value={formData.title}
-              onChange={(e) => {
-                setFormData({...formData, title: e.target.value});
-                setErrors({...errors, title: ''});
-              }}
-              className={`form-input ${errors.title ? 'error' : ''}`}
-              placeholder="Enter campaign title"
+              onChange={(e) => setFormData({...formData, title: e.target.value})}
+              required
               maxLength={100}
+              className="form-input"
+              placeholder="Enter campaign title"
             />
-            {errors.title && <span className="error-message">{errors.title}</span>}
           </div>
-
           <div className="form-group">
             <label htmlFor="description">Description</label>
             <textarea
               id="description"
               value={formData.description}
-              onChange={(e) => {
-                setFormData({...formData, description: e.target.value});
-                setErrors({...errors, description: ''});
-              }}
-              className={`form-input ${errors.description ? 'error' : ''}`}
+              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              required
+              maxLength={1000}
+              className="form-input"
               rows="6"
               placeholder="Enter campaign description"
-              maxLength={1000}
             />
-            {errors.description && <span className="error-message">{errors.description}</span>}
-            <span className="char-count">{formData.description.length}/1000</span>
           </div>
-
           <div className="form-group">
             <label htmlFor="duration">Duration (days)</label>
             <input
@@ -146,25 +148,18 @@ export function CreateCampaign() {
               min="1"
               max="30"
               value={formData.duration}
-              onChange={(e) => {
-                setFormData({...formData, duration: parseInt(e.target.value)});
-                setErrors({...errors, duration: ''});
-              }}
-              className={`form-input ${errors.duration ? 'error' : ''}`}
+              onChange={(e) => setFormData({...formData, duration: parseInt(e.target.value)})}
+              required
+              className="form-input"
             />
-            {errors.duration && <span className="error-message">{errors.duration}</span>}
           </div>
-
           <button 
             type="submit" 
             className="button primary" 
             disabled={loading}
           >
             {loading ? (
-              <div className="button-content">
-                <span>Creating Campaign</span>
-                <div className="spinner"></div>
-              </div>
+              <span>Creating... Please confirm in MetaMask</span>
             ) : (
               'Create Campaign'
             )}

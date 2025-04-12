@@ -6,12 +6,10 @@ import { Home } from './components/Home';
 import { Dashboard } from './components/Dashboard';
 import { CreateCampaign } from './components/CreateCampaign';
 import './App.css';
-
+import { CONTRACT_ABI } from './abi';
 // Contract configuration
-export const CONTRACT_ADDRESS = '0x5aE925E76f63906e725d2f87a8468ACFb93590dE';
-export const CONTRACT_ABI = [
-  // ... paste the entire ABI array here ...
-];
+const CONTRACT_ADDRESS = '0x5aE925E76f63906e725d2f87a8468ACFb93590dE';
+
 
 export const CROSSFI_CHAIN_ID = '0x103D';
 export const CROSSFI_RPC_URL = 'https://rpc.testnet.ms';

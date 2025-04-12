@@ -101,7 +101,7 @@ export function Navbar() {
   return (
     <nav className="navbar">
       <div className="nav-brand">
-        <Link to="/">Voteonchain</Link>
+        <Link to="/">VoteOnChain</Link>
       </div>
       <div className="nav-menu">
         <Link to="/" className="nav-link">Home</Link>

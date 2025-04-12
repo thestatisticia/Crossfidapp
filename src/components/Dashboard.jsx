@@ -36,6 +36,57 @@ export function Dashboard() {
     }
   ]);
 
+  const [loading, setLoading] = useState(false);
+
+  const handleVote = async (campaignId, voteType) => {
+    setLoading(true);
+    try {
+      // First ensure wallet is connected
+      if (!window.ethereum) {
+        throw new Error('Please install MetaMask!');
+      }
+
+      // Request account access
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (!accounts || accounts.length === 0) {
+        throw new Error('Please connect your wallet first!');
+      }
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+      // Estimate gas for voting
+      const gasEstimate = await contract.vote.estimateGas(
+        campaignId,
+        voteType === 'for' ? true : false
+      );
+
+      // Add 20% buffer to gas estimate
+      const gasLimit = Math.ceil(gasEstimate * 1.2);
+
+      const tx = await contract.vote(
+        campaignId,
+        voteType === 'for' ? true : false,
+        {
+          gasLimit
+        }
+      );
+
+      console.log('Vote transaction sent:', tx.hash);
+      await tx.wait();
+      alert('Vote cast successfully!');
+      
+      // Refresh campaign data
+      fetchCampaigns();
+    } catch (error) {
+      console.error('Voting error:', error);
+      alert(`Error: ${error.message || 'Failed to cast vote. Please try again.'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="dashboard">
       <section className="campaigns-section">
@@ -65,8 +116,20 @@ export function Dashboard() {
                 </div>
               </div>
               <div className="vote-actions">
-                <button className="button vote-for">Vote For</button>
-                <button className="button vote-against">Vote Against</button>
+                <button 
+                  className="button vote-for" 
+                  onClick={() => handleVote(campaign.id, 'for')}
+                  disabled={loading}
+                >
+                  {loading ? 'Processing...' : 'Vote For'}
+                </button>
+                <button 
+                  className="button vote-against"
+                  onClick={() => handleVote(campaign.id, 'against')}
+                  disabled={loading}
+                >
+                  {loading ? 'Processing...' : 'Vote Against'}
+                </button>
               </div>
               <div className="campaign-footer">
                 <span>Created by: {campaign.creator}</span>
